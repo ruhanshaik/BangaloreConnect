@@ -1,65 +1,127 @@
 const express = require('express');
-const fs = require('fs').promises;
-const path = require('path');
+const mongoose = require('mongoose');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
 
-// Middleware
+// ============ CONFIGURATION ============
+const PORT = process.env.PORT || 3000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bangaloreconnect';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// ============ MIDDLEWARE ============
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Session configuration
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'bangalore-connect-secret',
+    secret: process.env.SESSION_SECRET || 'bangalore-connect-secret-key-change-in-production',
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: MONGODB_URI,
+        ttl: 14 * 24 * 60 * 60 // 14 days
+    }),
+    cookie: {
+        secure: NODE_ENV === 'production',
+        maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
+    }
 }));
 
 // Set EJS as templating engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-
-// JSON Database Helper Functions
-const jobsFilePath = path.join(__dirname, 'data', 'jobs.json');
-
-async function readJobs() {
-    try {
-        const data = await fs.readFile(jobsFilePath, 'utf8');
-        return JSON.parse(data);
-    } catch (err) {
-        console.error('Error reading jobs file:', err);
-        return [];
+// ============ DATABASE MODELS ============
+// Job Schema
+const jobSchema = new mongoose.Schema({
+    title: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    company: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    location: {
+        type: String,
+        required: true,
+        trim: true,
+        default: 'Bangalore'
+    },
+    type: {
+        type: String,
+        required: true,
+        enum: ['Full-time', 'Part-time', 'Remote', 'Hybrid', 'Internship', 'Contract', 'Freelance'],
+        default: 'Full-time'
+    },
+    experience: {
+        type: String,
+        default: 'Fresher'
+    },
+    salary: {
+        type: String,
+        default: 'Not disclosed'
+    },
+    applyLink: {
+        type: String,
+        default: ''
+    },
+    shortDescription: {
+        type: String,
+        required: true
+    },
+    fullDescription: {
+        type: String,
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ['active', 'deleted'],
+        default: 'active'
+    },
+    postedDate: {
+        type: Date,
+        default: Date.now
     }
-}
+}, {
+    timestamps: true
+});
 
-async function writeJobs(jobs) {
-    try {
-        await fs.writeFile(jobsFilePath, JSON.stringify(jobs, null, 2), 'utf8');
-        return true;
-    } catch (err) {
-        console.error('Error writing jobs file:', err);
-        return false;
-    }
-}
+const Job = mongoose.model('Job', jobSchema);
 
-// Helper function to format date
-function formatDate(dateString) {
-    const date = new Date(dateString);
+// ============ HELPER FUNCTIONS ============
+function formatDate(date) {
+    if (!date) return 'Recently';
+    
     const now = new Date();
-    const diffTime = Math.abs(now - date);
+    const jobDate = new Date(date);
+    const diffTime = Math.abs(now - jobDate);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays === 1) return 'Today';
     if (diffDays <= 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString('en-IN', { 
+    
+    return jobDate.toLocaleDateString('en-IN', { 
         day: 'numeric', 
         month: 'short', 
         year: 'numeric' 
     });
+}
+
+function generateCaptcha() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let captcha = '';
+    for (let i = 0; i < 6; i++) {
+        captcha += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return captcha;
 }
 
 // ============ MIDDLEWARES ============
@@ -78,27 +140,28 @@ const isAdmin = (req, res, next) => {
 // Homepage
 app.get('/', async (req, res) => {
     try {
-        const jobs = await readJobs();
-        const activeJobs = jobs.filter(job => job.status === 'active');
-        
-        // Pagination
         const page = parseInt(req.query.page) || 1;
         const limit = 10;
-        const startIndex = (page - 1) * limit;
-        const endIndex = startIndex + limit;
-        const paginatedJobs = activeJobs.slice(startIndex, endIndex);
-        const totalPages = Math.ceil(activeJobs.length / limit);
+        const skip = (page - 1) * limit;
+        
+        const jobs = await Job.find({ status: 'active' })
+            .sort({ postedDate: -1 })
+            .skip(skip)
+            .limit(limit);
+            
+        const totalJobs = await Job.countDocuments({ status: 'active' });
+        const totalPages = Math.ceil(totalJobs / limit);
         
         res.render('index', {
             title: 'Bangalore Connect - Find Your Dream Job',
-            jobs: paginatedJobs,
+            jobs,
             currentPage: page,
             totalPages,
-            hasNextPage: endIndex < activeJobs.length,
-            hasPrevPage: startIndex > 0,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
             query: '',
             filters: {},
-            formatDate: formatDate
+            formatDate
         });
     } catch (err) {
         console.error('Error loading homepage:', err);
@@ -112,8 +175,10 @@ app.get('/', async (req, res) => {
 // Job Detail Page
 app.get('/job/:id', async (req, res) => {
     try {
-        const jobs = await readJobs();
-        const job = jobs.find(j => j.id === parseInt(req.params.id) && j.status === 'active');
+        const job = await Job.findOne({ 
+            _id: req.params.id, 
+            status: 'active' 
+        });
         
         if (!job) {
             return res.status(404).render('error', { 
@@ -125,7 +190,7 @@ app.get('/job/:id', async (req, res) => {
         res.render('job-detail', {
             title: `${job.title} at ${job.company}`,
             job,
-            formatDate: formatDate
+            formatDate
         });
     } catch (err) {
         console.error('Error loading job detail:', err);
@@ -139,6 +204,15 @@ app.get('/job/:id', async (req, res) => {
 // WhatsApp redirect
 app.get('/whatsapp', (req, res) => {
     res.redirect('https://chat.whatsapp.com/KhTXl9CNMbSG8mv6nYCAAW');
+});
+
+// Health check endpoint for Railway
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'OK', 
+        message: 'BangaloreConnect is running',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // ----- ADMIN ROUTES -----
@@ -190,20 +264,19 @@ app.post('/admin/login', (req, res) => {
 // Admin Dashboard
 app.get('/admin/dashboard', isAdmin, async (req, res) => {
     try {
-        const jobs = await readJobs();
-        const activeJobs = jobs.filter(job => job.status === 'active');
-        
-        // Get success/error messages from query parameters
-        const success = req.query.success;
-        const error = req.query.error;
+        const totalJobs = await Job.countDocuments({ status: 'active' });
+        const recentJobs = await Job.find({ status: 'active' })
+            .sort({ postedDate: -1 })
+            .limit(5);
         
         res.render('dashboard', {
             title: 'Admin Dashboard',
             username: req.session.adminUsername,
-            totalJobs: activeJobs.length,
-            recentJobs: activeJobs.slice(0, 5), // Show last 5 jobs
-            success: success,
-            error: error
+            totalJobs,
+            recentJobs,
+            success: req.query.success,
+            error: req.query.error,
+            formatDate
         });
     } catch (err) {
         console.error('Error loading dashboard:', err);
@@ -214,23 +287,14 @@ app.get('/admin/dashboard', isAdmin, async (req, res) => {
     }
 });
 
-// // Post Job Page (Form)
-// app.get('/admin/post-job', isAdmin, (req, res) => {
-//     res.render('post-job', {
-//         title: 'Post New Job',
-//         username: req.session.adminUsername,
-//         job: null,
-//         error: null
-//     });
-// });
-// Post Job Page (Form) - GET
+// Post Job Page (Form)
 app.get('/admin/post-job', isAdmin, (req, res) => {
     res.render('post-job', {
         title: 'Post New Job',
         username: req.session.adminUsername,
         job: null,
         error: null,
-        success: null  // Make sure this is included
+        success: null
     });
 });
 
@@ -249,8 +313,6 @@ app.post('/admin/post-job', isAdmin, async (req, res) => {
             fullDescription
         } = req.body;
         
-        console.log('Job form submitted:', { title, company, location }); // Debug
-        
         // Validation
         if (!title || !company || !location || !shortDescription || !fullDescription) {
             return res.render('post-job', {
@@ -262,47 +324,24 @@ app.post('/admin/post-job', isAdmin, async (req, res) => {
             });
         }
         
-        // Read existing jobs
-        const jobs = await readJobs();
-        
-        // Create new job ID
-        let newId = 1;
-        if (jobs.length > 0) {
-            const maxId = Math.max(...jobs.map(j => j.id));
-            newId = maxId + 1;
-        }
-        
         // Create new job
-        const newJob = {
-            id: newId,
+        const newJob = new Job({
             title: title.trim(),
             company: company.trim(),
             location: location.trim(),
             type: type || 'Full-time',
             experience: experience || 'Fresher',
-            postedDate: new Date().toISOString(),
             salary: salary || 'Not disclosed',
             applyLink: applyLink || '',
             shortDescription: shortDescription.trim(),
             fullDescription: fullDescription.trim(),
             status: 'active'
-        };
+        });
         
-        console.log('New job created:', newJob); // Debug
+        // Save to MongoDB
+        await newJob.save();
         
-        // Add to jobs array
-        jobs.push(newJob);
-        
-        // Save to file
-        const saved = await writeJobs(jobs);
-        
-        if (!saved) {
-            throw new Error('Failed to save job to database');
-        }
-        
-        console.log('Job saved successfully to jobs.json'); // Debug
-        
-        // Show success message on post-job page
+        // Show success message
         res.render('post-job', {
             title: 'Post New Job',
             username: req.session.adminUsername,
@@ -322,18 +361,18 @@ app.post('/admin/post-job', isAdmin, async (req, res) => {
         });
     }
 });
+
 // Delete Job
 app.post('/admin/delete-job/:id', isAdmin, async (req, res) => {
     try {
-        const jobs = await readJobs();
-        const updatedJobs = jobs.map(job => 
-            job.id === parseInt(req.params.id) 
-                ? { ...job, status: 'deleted' } 
-                : job
-        );
-        
-        await writeJobs(updatedJobs);
-        res.redirect('/admin/dashboard?success=Job deleted successfully!');
+        const job = await Job.findById(req.params.id);
+        if (job) {
+            job.status = 'deleted';
+            await job.save();
+            res.redirect('/admin/dashboard?success=Job deleted successfully!');
+        } else {
+            res.redirect('/admin/dashboard?error=Job not found');
+        }
     } catch (err) {
         console.error('Error deleting job:', err);
         res.redirect('/admin/dashboard?error=Error deleting job');
@@ -346,41 +385,48 @@ app.get('/admin/logout', (req, res) => {
     res.redirect('/admin/login');
 });
 
-// ----- HELPER FUNCTIONS -----
-
-function generateCaptcha() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let captcha = '';
-    for (let i = 0; i < 6; i++) {
-        captcha += chars.charAt(Math.floor(Math.random() * chars.length));
+// ============ DATABASE CONNECTION ============
+async function connectDB() {
+    try {
+        await mongoose.connect(MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        });
+        console.log('✅ MongoDB connected successfully');
+        
+        // Create indexes
+        await Job.createIndexes();
+        console.log('✅ Database indexes created');
+        
+    } catch (err) {
+        console.error('❌ MongoDB connection error:', err);
+        process.exit(1); // Exit if DB connection fails
     }
-    return captcha;
 }
 
-// ----- START SERVER -----
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`🔐 Admin login: http://localhost:${PORT}/admin/login`);
-    console.log(`👤 Username: ${process.env.ADMIN_USERNAME || 'Ruhan@0312'}`);
-    console.log(`🔑 Password: ${process.env.ADMIN_PASSWORD || 'Ruhan@0312'}`);
+// ============ START SERVER ============
+async function startServer() {
+    // Connect to database first
+    await connectDB();
     
-    // Check if data folder exists
-    const dataDir = path.join(__dirname, 'data');
-    fs.access(dataDir).catch(() => {
-        fs.mkdir(dataDir).then(() => {
-            console.log('✅ Created data directory');
-            // Initialize jobs.json if empty
-            const jobsFile = path.join(dataDir, 'jobs.json');
-            fs.access(jobsFile).catch(() => {
-                fs.writeFile(jobsFile, '[]', 'utf8');
-                console.log('✅ Created jobs.json file');
-            });
-        });
+    // Start server
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`🌐 Environment: ${NODE_ENV}`);
+        console.log(`🔗 Local: http://localhost:${PORT}`);
+        console.log(`🔐 Admin: http://localhost:${PORT}/admin/login`);
+        console.log(`👤 Username: ${process.env.ADMIN_USERNAME || 'Ruhan@0312'}`);
+        console.log(`🔑 Password: ${process.env.ADMIN_PASSWORD || 'Ruhan@0312'}`);
+        
+        if (NODE_ENV === 'production') {
+            console.log('📦 Running in PRODUCTION mode');
+        }
     });
-});
+}
 
-// ============ ERROR HANDLERS (MUST BE LAST) ============
+startServer();
+
+// ============ ERROR HANDLERS ============
 // 404 Error Handler
 app.use((req, res) => {
     res.status(404).render('error', { 
