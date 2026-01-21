@@ -1,0 +1,181 @@
+<%- include('partials/header') %>
+
+    <!-- Job Detail Section -->
+    <section class="job-detail">
+        <div class="container">
+            <a href="/" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Jobs
+            </a>
+            
+            <div class="job-detail-card">
+                <div class="job-detail-header">
+                    <div>
+                        <h1 class="job-detail-title"><%= job.title %></h1>
+                        <p class="job-detail-company">
+                            <i class="fas fa-building"></i>
+                            <%= job.company %>
+                        </p>
+                    </div>
+                    
+                    <div class="job-detail-actions">
+                        <button class="btn btn-share-lg" onclick="shareJob('<%= job._id %>')">
+                            <i class="fas fa-share-alt"></i> Share
+                        </button>
+                        <% if (job.applyLink) { %>
+                            <a href="<%= job.applyLink %>" class="btn btn-apply-lg" 
+                               <%= job.applyLink.startsWith('http') ? 'target="_blank"' : '' %>>
+                                <i class="fas fa-paper-plane"></i> Apply Now
+                            </a>
+                        <% } else { %>
+                            <a href="#apply" class="btn btn-apply-lg">
+                                <i class="fas fa-paper-plane"></i> Apply Now
+                            </a>
+                        <% } %>
+                    </div>
+                </div>
+                
+                <div class="job-detail-meta">
+                    <div class="meta-box">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <h4>Location</h4>
+                        <p><%= job.location %></p>
+                    </div>
+                    
+                    <div class="meta-box">
+                        <i class="fas fa-briefcase"></i>
+                        <h4>Job Type</h4>
+                        <p><%= job.type %></p>
+                    </div>
+                    
+                    <div class="meta-box">
+                        <i class="fas fa-chart-line"></i>
+                        <h4>Experience</h4>
+                        <p><%= job.experience %></p>
+                    </div>
+                    
+                    <div class="meta-box">
+                        <i class="fas fa-rupee-sign"></i>
+                        <h4>Salary</h4>
+                        <p><%= job.salary %></p>
+                    </div>
+                    
+                    <div class="meta-box">
+                        <i class="fas fa-calendar"></i>
+                        <h4>Posted Date</h4>
+                        <p>
+                            <% 
+                                const date = new Date(job.postedDate);
+                                const now = new Date();
+                                const diffTime = Math.abs(now - date);
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                
+                                let formattedDate;
+                                if (diffDays === 1) formattedDate = 'Today';
+                                else if (diffDays <= 7) formattedDate = `${diffDays} days ago`;
+                                else formattedDate = date.toLocaleDateString('en-IN', { 
+                                    day: 'numeric', 
+                                    month: 'short', 
+                                    year: 'numeric' 
+                                });
+                            %>
+                            <%= formattedDate %>
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="job-detail-description">
+                    <!-- SIMPLIFIED: Show EXACTLY what's stored in fullDescription -->
+                    <% if (job.fullDescription) { %>
+                        <div style="white-space: pre-wrap; line-height: 1.6;">
+                            <%= job.fullDescription %>
+                        </div>
+                    <% } else if (job.description) { %>
+                        <div style="white-space: pre-wrap; line-height: 1.6;">
+                            <%= job.description %>
+                        </div>
+                    <% } else { %>
+                        <p>No detailed description available for this job.</p>
+                    <% } %>
+                </div>
+                
+                <div class="job-detail-actions" id="apply">
+                    <button class="btn btn-share-lg" onclick="shareJob('<%= job._id %>')">
+                        <i class="fas fa-share-alt"></i> Share Job
+                    </button>
+                    
+                    <% if (job.applyLink) { %>
+                        <a href="<%= job.applyLink %>" class="btn btn-apply-lg" 
+                           <%= job.applyLink.startsWith('http') ? 'target="_blank"' : '' %>>
+                            <i class="fas fa-paper-plane"></i> 
+                            <%= job.applyLink.startsWith('mailto') ? 'Apply via Email' : 'Apply Now' %>
+                        </a>
+                    <% } else { 
+                        // Create email link from company name
+                        const cleanCompany = job.company.toLowerCase().replace(/\s+/g, '');
+                    %>
+                        <a href="mailto:careers@<%= cleanCompany %>.com?subject=Application for <%= encodeURIComponent(job.title) %> Position&body=Dear Hiring Manager,%0D%0A%0D%0AI am writing to apply for the <%= encodeURIComponent(job.title) %> position at <%= encodeURIComponent(job.company) %>.%0D%0A%0D%0APlease find my resume attached.%0D%0A%0D%0ABest regards,%0D%0A[Your Name]" 
+                           class="btn btn-apply-lg">
+                            <i class="fas fa-paper-plane"></i> Apply via Email
+                        </a>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        function shareJob(jobId) {
+            const jobUrl = `${window.location.origin}/job/${jobId}`;
+            const jobTitle = document.querySelector('.job-detail-title').textContent;
+            const company = document.querySelector('.job-detail-company').textContent;
+            
+            if (navigator.share) {
+                navigator.share({
+                    title: `${jobTitle} - ${company}`,
+                    text: `Check out this job opportunity on Bangalore Connect: ${jobTitle} at ${company}`,
+                    url: jobUrl,
+                })
+                .then(() => {
+                    // Show success message
+                    alert('Job shared successfully!');
+                })
+                .catch((error) => {
+                    console.log('Error sharing:', error);
+                    copyToClipboard(jobUrl);
+                });
+            } else {
+                copyToClipboard(jobUrl);
+            }
+        }
+        
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text)
+                .then(() => {
+                    alert('Link copied to clipboard!');
+                })
+                .catch(() => {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    alert('Link copied to clipboard!');
+                });
+        }
+        
+        // Auto-convert <br> tags to line breaks
+        document.addEventListener('DOMContentLoaded', function() {
+            const descriptionDiv = document.querySelector('.job-detail-description div');
+            if (descriptionDiv) {
+                // Replace <br> with line breaks
+                let html = descriptionDiv.innerHTML;
+                html = html.replace(/&lt;br&gt;/gi, '<br>');
+                html = html.replace(/<br\s*\/?>/gi, '<br>');
+                descriptionDiv.innerHTML = html;
+            }
+        });
+    </script>
+
+<%- include('partials/footer') %>

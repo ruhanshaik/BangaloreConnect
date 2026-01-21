@@ -1,0 +1,275 @@
+<%- include('partials/header') %>
+
+    <div class="dashboard">
+        <div class="container">
+            <div class="dashboard-header">
+                <div>
+                    <h1>Post New Job</h1>
+                    <p>Fill in the job details below</p>
+                </div>
+                <div>
+                    <a href="/admin/dashboard" class="btn btn-outline">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+            </div>
+            
+            <% if (typeof error !== 'undefined' && error) { %>
+                <div class="error-message" style="margin-bottom: 2rem;">
+                    <i class="fas fa-exclamation-circle"></i> <%= error %>
+                </div>
+            <% } %>
+            
+            <% if (typeof success !== 'undefined' && success) { %>
+                <div class="success-message" style="background: var(--success); color: white; padding: 1rem; border-radius: var(--radius); margin-bottom: 2rem;">
+                    <i class="fas fa-check-circle"></i> <%= success %>
+                </div>
+            <% } %>
+            
+            <div class="job-detail-card">
+                <form action="/admin/post-job" method="POST" class="job-form" id="jobForm">
+                    <div class="form-grid">
+                        <!-- Basic Information -->
+                        <div class="form-section">
+                            <h3><i class="fas fa-info-circle"></i> Basic Information</h3>
+                            
+                            <div class="form-group">
+                                <label for="title">Job Title *</label>
+                                <input type="text" id="title" name="title" class="form-control" 
+                                       value="<%= job ? job.title : '' %>" required
+                                       placeholder="e.g., Customer Success Intern">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="company">Company Name *</label>
+                                <input type="text" id="company" name="company" class="form-control" 
+                                       value="<%= job ? job.company : '' %>" required
+                                       placeholder="e.g., Joveo">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="location">Location *</label>
+                                <input type="text" id="location" name="location" class="form-control" 
+                                       value="<%= job ? job.location : 'Bangalore' %>" required
+                                       placeholder="e.g., Bangalore">
+                            </div>
+                        </div>
+                        
+                        <!-- Job Details -->
+                        <div class="form-section">
+                            <h3><i class="fas fa-briefcase"></i> Job Details</h3>
+                            
+                            <div class="form-group">
+                                <label for="type">Job Type</label>
+                                <select id="type" name="type" class="form-control">
+                                    <option value="Full-time">Full-time</option>
+                                    <option value="Part-time">Part-time</option>
+                                    <option value="Remote">Remote</option>
+                                    <option value="Hybrid">Hybrid</option>
+                                    <option value="Internship">Internship</option>
+                                    <option value="Contract">Contract</option>
+                                    <option value="Freelance">Freelance</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="experience">Experience Level</label>
+                                <input type="text" id="experience" name="experience" class="form-control" 
+                                       value="<%= job ? job.experience : '' %>"
+                                       placeholder="e.g., 0-1 years, Fresher">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="salary">Salary Package</label>
+                                <input type="text" id="salary" name="salary" class="form-control" 
+                                       value="<%= job ? job.salary : '' %>"
+                                       placeholder="e.g., Competitive salary">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="applyLink">Apply Link (Email or URL)</label>
+                                <input type="text" id="applyLink" name="applyLink" class="form-control" 
+                                       value="<%= job ? job.applyLink : '' %>"
+                                       placeholder="e.g., mailto:careers@company.com">
+                                <small>Leave empty for auto-generated email</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- HIDDEN shortDescription field - auto-generated -->
+                    <input type="hidden" id="shortDescription" name="shortDescription">
+                    
+                    <!-- Single visible description field -->
+                    <div class="form-section">
+                        <h3><i class="fas fa-file-alt"></i> Job Description *</h3>
+                        
+                        <div class="form-group">
+                            <label for="fullDescription">Full Job Description</label>
+                            <textarea id="fullDescription" name="fullDescription" class="form-control" 
+                                      rows="25" required
+                                      placeholder="Paste the complete job description here..."><%= job ? job.fullDescription : '' %></textarea>
+                            
+                            <!-- Preview that converts <br> to line breaks -->
+                            <div style="margin-top: 1rem; padding: 1rem; background: #f5f5f5; border-radius: 8px;">
+                                <strong style="color: var(--primary);">
+                                    <i class="fas fa-home"></i> Preview (first 3 lines will show on homepage):
+                                </strong>
+                                <div id="homepagePreview" style="margin-top: 0.5rem; padding: 1rem; background: white; border-radius: 6px; min-height: 60px; border: 1px solid #ddd; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">
+                                    <p style="color: #666; margin: 0;">Preview will appear here...</p>
+                                </div>
+                                <small style="color: #666; display: block; margin-top: 0.5rem;">
+                                    <i class="fas fa-info-circle"></i> <strong>Full description</strong> shows on job details page. <strong>First 3 lines</strong> show on homepage.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="reset" class="btn btn-outline">
+                            <i class="fas fa-redo"></i> Reset Form
+                        </button>
+                        <button type="submit" class="btn btn-apply">
+                            <i class="fas fa-paper-plane"></i> Post Job
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fullDescriptionTextarea = document.getElementById('fullDescription');
+        const shortDescriptionField = document.getElementById('shortDescription');
+        const homepagePreview = document.getElementById('homepagePreview');
+        
+        function convertBrToLineBreaks(text) {
+            // Replace <br> and <br /> with actual line breaks
+            return text
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/&nbsp;/g, ' ');
+        }
+        
+        function updatePreview() {
+            const fullText = fullDescriptionTextarea.value;
+            
+            if (!fullText.trim()) {
+                homepagePreview.innerHTML = '<p style="color: #666; margin: 0;">Preview will appear here...</p>';
+                shortDescriptionField.value = '';
+                return;
+            }
+            
+            // Convert <br> tags to line breaks for preview
+            const textWithLineBreaks = convertBrToLineBreaks(fullText);
+            
+            // For homepage preview: take first 3 non-empty lines
+            const lines = textWithLineBreaks.split('\n');
+            let previewLines = [];
+            let lineCount = 0;
+            
+            for (let i = 0; i < lines.length && previewLines.length < 3; i++) {
+                const line = lines[i].trim();
+                if (line !== '') {
+                    previewLines.push(line);
+                    lineCount++;
+                }
+            }
+            
+            // Display homepage preview
+            if (previewLines.length === 0) {
+                homepagePreview.innerHTML = '<p style="color: #666; margin: 0;">No content to preview...</p>';
+            } else {
+                let previewHTML = '';
+                previewLines.forEach(line => {
+                    // Keep bold tags if present
+                    previewHTML += `<p style="margin: 0 0 0.25rem 0;">${line}</p>`;
+                });
+                
+                if (lines.length > lineCount) {
+                    previewHTML += '<p style="color: #888; margin: 0.25rem 0 0 0; font-style: italic; font-size: 0.9rem;">... (click for full details)</p>';
+                }
+                
+                homepagePreview.innerHTML = previewHTML;
+            }
+            
+            // For short description field: join first 3 lines with \n
+            shortDescriptionField.value = previewLines.join('\n');
+        }
+        
+        if (fullDescriptionTextarea && homepagePreview && shortDescriptionField) {
+            fullDescriptionTextarea.addEventListener('input', updatePreview);
+            
+            fullDescriptionTextarea.addEventListener('paste', function() {
+                setTimeout(updatePreview, 10);
+            });
+            
+            updatePreview();
+        }
+        
+        // Form validation
+        const jobForm = document.getElementById('jobForm');
+        if (jobForm) {
+            jobForm.addEventListener('submit', function(e) {
+                updatePreview(); // Ensure short description is generated
+                
+                const title = document.getElementById('title');
+                const company = document.getElementById('company');
+                const location = document.getElementById('location');
+                const fullDesc = document.getElementById('fullDescription');
+                
+                let isValid = true;
+                let errorMessage = '';
+                
+                if (!title.value.trim()) {
+                    isValid = false;
+                    title.style.borderColor = 'red';
+                    errorMessage += '• Job Title is required\n';
+                } else {
+                    title.style.borderColor = '';
+                }
+                
+                if (!company.value.trim()) {
+                    isValid = false;
+                    company.style.borderColor = 'red';
+                    errorMessage += '• Company Name is required\n';
+                } else {
+                    company.style.borderColor = '';
+                }
+                
+                if (!location.value.trim()) {
+                    isValid = false;
+                    location.style.borderColor = 'red';
+                    errorMessage += '• Location is required\n';
+                } else {
+                    location.style.borderColor = '';
+                }
+                
+                if (!fullDesc.value.trim()) {
+                    isValid = false;
+                    fullDesc.style.borderColor = 'red';
+                    errorMessage += '• Job Description is required\n';
+                } else {
+                    fullDesc.style.borderColor = '';
+                }
+                
+                if (!isValid) {
+                    e.preventDefault();
+                    alert('Please fix the following errors:\n\n' + errorMessage);
+                    return false;
+                }
+                
+                return true;
+            });
+        }
+        
+        // Remove red border when typing
+        const inputs = document.querySelectorAll('input[required], textarea[required]');
+        inputs.forEach(input => {
+            input.addEventListener('input', function() {
+                if (this.value.trim()) {
+                    this.style.borderColor = '';
+                }
+            });
+        });
+    </script>
+
+<%- include('partials/footer') %>
